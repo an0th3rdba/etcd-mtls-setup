@@ -1,0 +1,190 @@
+####################################
+## Useful docs:
+####################################
+
+etcd v3.2.9 with enabled authentication allows modify any key without credentials #8829
+https://github.com/etcd-io/etcd/issues/8829
+
+v2 Auth and Security
+https://etcd.io/docs/v2.3/auth_api/
+
+etcd 3.1.12 auth with certificates doesn't work #9816
+https://github.com/etcd-io/etcd/issues/9816
+
+python-etcd flags
+https://github.com/jplana/python-etcd/blob/master/src/etcd/client.py
+
+####################################
+## TEST 1: start Etcd in no-ssl mode, enable authentication for apiV2 and try to put a key using python-etcd module.
+####################################
+
+$ ~/experiments/start_local_etcd.sh nossl ~/etcd_test_data_dir rm authv2
+User root created
+User user1 created
+Role user1_role created
+Role user1_role updated
+User user1 updated
+Authentication Enabled
+
+$ tail -1000f ~/experiments/etcd_nossl.log
+
+$ python3 ~/experiments/python_etcd.py
+Key: /test/ssl
+Value: no
+
+-----
+Q: still able to add keys even if authV2 is enable. Why?!
+A: beause of "quest" default role created automatically for apiV2. Ref. to https://github.com/etcd-io/etcd/issues/8829
+-----
+
+$ ETCDCTL_API=2 etcdctl -u root role list
+Password:
+guest               <----- Need to remove
+root
+user1_role
+
+$ ETCDCTL_API=2 etcdctl -u root role remove guest
+Password:
+Role guest removed
+
+Retest:
+
+$ python3 ~/experiments/python_etcd.py
+Traceback (most recent call last):
+  File "/home/dba/experiments/python_etcd.py", line 12, in <module>
+    client.write(KEY, VALUE)
+  File "/usr/lib/python3.6/site-packages/etcd/client.py", line 500, in write
+    response = self.api_execute(path, method, params=params)
+  File "/usr/lib/python3.6/site-packages/etcd/client.py", line 907, in wrapper
+    return self._handle_server_response(response)
+  File "/usr/lib/python3.6/site-packages/etcd/client.py", line 987, in _handle_server_response
+    etcd.EtcdError.handle(r)
+  File "/usr/lib/python3.6/site-packages/etcd/__init__.py", line 306, in handle
+    raise exc(msg, payload)
+etcd.EtcdInsufficientPermissions: The request requires user authentication : Insufficient credentials
+
+Added username/password to python script: client = etcd.Client(host='127.0.0.1', port=2379, username='user1', password='user123')
+$ python3 ~/experiments/python_etcd.py
+Key: /service/ssl
+Value: no
+
+Try with wrong password:
+$ python3 ~/experiments/python_etcd.py
+Traceback (most recent call last):
+  File "/home/dba/experiments/python_etcd.py", line 25, in <module>
+    client.write(KEY, VALUE)
+  File "/usr/lib/python3.6/site-packages/etcd/client.py", line 500, in write
+    response = self.api_execute(path, method, params=params)
+  File "/usr/lib/python3.6/site-packages/etcd/client.py", line 907, in wrapper
+    return self._handle_server_response(response)
+  File "/usr/lib/python3.6/site-packages/etcd/client.py", line 987, in _handle_server_response
+    etcd.EtcdError.handle(r)
+  File "/usr/lib/python3.6/site-packages/etcd/__init__.py", line 306, in handle
+    raise exc(msg, payload)
+etcd.EtcdInsufficientPermissions: The request requires user authentication : Insufficient credentials
+
+From etcd server log:
+{"level":"warn","ts":"2023-01-10T12:34:24.922+0300","caller":"v2http/client_auth.go:57","msg":"incorrect password","user-name":"user1"}
+
+##################################
+## TEST 2: start Etcd in SSL mode, enable authentication for apiV2 and try to put a key using python-etcd module with ONLY certs as cred.
+##################################
+
+Client cert:
+$ cat /home/dba/experiments/ssl/user1.info | head -10
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 2 (0x2)
+    Signature Algorithm: sha512WithRSAEncryption
+        Issuer: CN=TEST-CA
+        Validity
+            Not Before: Jan 10 09:52:08 2023 GMT
+            Not After : Jan  9 09:52:08 2026 GMT
+        Subject: CN=user1
+
+-----
+Try 1 with: client = etcd.Client(host='127.0.0.1', port=2379)
+
+$ python3 ~/experiments/python_etcd.py
+etcd.EtcdConnectionFailed: Connection to etcd failed due to MaxRetryError("HTTPConnectionPool(host='127.0.0.1', port=2379): Max retries exceeded with url: /v2/keys/service/ssl (Caused by ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response',)))",)
+
+Etcd server log:
+{"level":"warn","ts":"2023-01-10T12:44:47.769+0300","caller":"embed/config_logging.go:169","msg":"rejected connection","remote-addr":"127.0.0.1:49818","server-name":"","error":"tls: first record does not look like a TLS handshake"}
+
+-----
+Try 2 with: client = etcd.Client(host='127.0.0.1', port=2379, username='user1', password='user123')
+
+$ python3 ~/experiments/python_etcd.py
+etcd.EtcdConnectionFailed: Connection to etcd failed due to MaxRetryError("HTTPConnectionPool(host='127.0.0.1', port=2379): Max retries exceeded with url: /v2/keys/service/ssl (Caused by ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response',)))",)
+
+Etcd server log:
+{"level":"warn","ts":"2023-01-10T12:46:30.547+0300","caller":"embed/config_logging.go:169","msg":"rejected connection","remote-addr":"127.0.0.1:49826","server-name":"","error":"tls: first record does not look like a TLS handshake"}
+
+-----
+Try 3 with: client = etcd.Client(host='127.0.0.1', port=2379, username='user1', password='user1234')
+
+$ python3 ~/experiments/python_etcd.py
+etcd.EtcdConnectionFailed: Connection to etcd failed due to MaxRetryError("HTTPConnectionPool(host='127.0.0.1', port=2379): Max retries exceeded with url: /v2/keys/service/ssl (Caused by ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response',)))",)
+
+Etcd server log:
+{"level":"warn","ts":"2023-01-10T12:47:40.244+0300","caller":"embed/config_logging.go:169","msg":"rejected connection","remote-addr":"127.0.0.1:49834","server-name":"","error":"tls: first record does not look like a TLS handshake"}
+
+-----
+Try 3 with:
+CA_CERT='./ssl/root.crt'
+CLIENT_CERT='./ssl/user1.crt'
+CLIENT_KEY='./ssl/user1.key'
+client = etcd.Client(host='127.0.0.1',
+                     port=2379,
+                     protocol='https',
+                     ca_cert=CA_CERT,
+                     cert=(CLIENT_CERT,CLIENT_KEY))
+
+$ python3 ~/experiments/python_etcd.py
+Key: /service/ssl
+Value: yes
+
+-----
+Try 4 with: user2 who doesn't exist in Etcd cluster apiV2.
+
+Client cert:
+$ cat /home/dba/experiments/ssl/user2.info | head -10
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 3 (0x3)
+    Signature Algorithm: sha512WithRSAEncryption
+        Issuer: CN=TEST-CA
+        Validity
+            Not Before: Jan 10 09:52:08 2023 GMT
+            Not After : Jan  9 09:52:08 2026 GMT
+        Subject: CN=user2
+
+Python script:
+CA_CERT='./ssl/root.crt'
+CLIENT_CERT='./ssl/user2.crt'
+CLIENT_KEY='./ssl/user2.key'
+client = etcd.Client(host='127.0.0.1',
+                     port=2379,
+                     protocol='https',
+                     ca_cert=CA_CERT,
+                     cert=(CLIENT_CERT,CLIENT_KEY))
+
+Result:
+etcd.EtcdInsufficientPermissions: The request requires user authentication : Insufficient credentials
+
+Looks like when flag --client-cert-auth is in use then auth is perfoming based on certs and its CN value (should equal to user in Etcd cluster).
+
+-----
+Try 5 with: start etcd server without flags --client-cert-auth and --trusted-ca-file. 
+Expectations: In this case I expect Etcd will not perform auth based on provided client cert, only client cert signed CA will be verified (client and server certs CA should be the same).
+Reality: same result as from "Try 4". Looks like this is because of below:
+"Ref. to https://etcd.io/docs/v3.4/op-guide/security/
+--client-cert-auth: When this is set etcd will check all incoming HTTPS requests for a client certificate signed by the trusted CA, 
+requests that don’t supply a valid client certificate will fail. If authentication is enabled, the certificate provides credentials 
+for the user name given by the Common Name field.
+"
+Summary: looks like "--client-cert-auth" and "--trusted-ca-file" flags are like a switch for enabling the server the ability to verify client certs.
+         When basic auth is enabled then "--client-cert-auth" can be used to login to cluster without user/pwd pair, but with certs only (cn in client cert should be equal to the user name who exist in etcd cluster).
+
