@@ -214,19 +214,31 @@ cluster is healthy
 
 # (OPTIONAL) Update ad-hoc commands environment file
 
-cat <<EOF >> ~/etcd.env
+```
+$ cat <<EOF >> ~/etcd.env
+export ETCD_HOST_FQDN="$(hostname -f)"
+export ETCD_USER="patroni_etcd_usr"
 export ETCDCONF="/etc/etcd/etcd.conf"
-export ETCD_SSL_DIR="/etc/etcd/ssl"
-export ETCD_HOST_FQDN="\$(hostname -f)"
+export ETCD_SSL_DIR="/home/postgres/ssl"
+
+alias etcdver='etcd --version'
 alias etcdconf='view \${ETCDCONF}'
 alias etcdlog='sudo journalctl -u etcd | view -'
 alias etcdlogtail='sudo journalctl -u etcd -f -n 1000'
 alias etcdlogerr="sudo journalctl -u etcd -f -n 1000 | egrep -i 'WARNING|ERROR|FATAL'"
-alias etcdver='etcd --version'
-alias etcdlist='ETCDCTL_API=3 etcdctl --endpoints=https://\${ETCD_HOST_FQDN}:2379 --cert=\${ETCD_SSL_DIR}/\${ETCD_HOST_FQDN}.crt --key=\${ETCD_SSL_DIR}/\${ETCD_HOST_FQDN}.key --cacert=\${ETCD_SSL_DIR}/root.crt endpoint status --cluster -w table'
-alias etcdmembers='ETCDCTL_API=2 etcdctl --endpoints=https://\${ETCD_HOST_FQDN}:2379 --ca-file=\${ETCD_SSL_DIR}/root.crt --cert-file=\${ETCD_SSL_DIR}/\${ETCD_HOST_FQDN}.crt --key-file=\${ETCD_SSL_DIR}/\${ETCD_HOST_FQDN}.key member list'
-alias etcdhealth='ETCDCTL_API=2 etcdctl --endpoints=https://\${ETCD_HOST_FQDN}:2379 --ca-file=\${ETCD_SSL_DIR}/root.crt --cert-file=\${ETCD_SSL_DIR}/\${ETCD_HOST_FQDN}.crt --key-file=\${ETCD_SSL_DIR}/\${ETCD_HOST_FQDN}.key cluster-health'
-alias etcdls='ETCDCTL_API=2 etcdctl --endpoints=https://\${ETCD_HOST_FQDN}:2379 --ca-file=\${ETCD_SSL_DIR}/root.crt --cert-file=\${ETCD_SSL_DIR}/\${ETCD_HOST_FQDN}.crt --key-file=\${ETCD_SSL_DIR}/\${ETCD_HOST_FQDN}.key ls / --recursive'
-alias etcdgetv2key='ETCDCTL_API=2 etcdctl --endpoints=https://${ETCD_HOST_FQDN}:2379 --ca-file=${ETCD_SSL_DIR}/root.crt --cert-file=${ETCD_SSL_DIR}/${ETCD_HOST_FQDN}.crt --key-file=${ETCD_SSL_DIR}/${ETCD_HOST_FQDN}.key get '
-alias etcdmoveleader='ETCDCTL_API=3 etcdctl --endpoints=https://${ETCD_HOST_FQDN}:2379 --cert=${ETCD_SSL_DIR}/${ETCD_HOST_FQDN}.crt --key=${ETCD_SSL_DIR}/${ETCD_HOST_FQDN}.key --cacert=${ETCD_SSL_DIR}/root.crt move-leader'
+
+#apiV3
+export ETCD_SSL_ARGS_V3="--endpoints=https://\${ETCD_HOST_FQDN}:2379 --cert=\${ETCD_SSL_DIR}/\${ETCD_USER}.crt --key=\${ETCD_SSL_DIR}/\${ETCD_USER}.key --cacert=\${ETCD_SSL_DIR}/root.crt"
+alias etcdlist='ETCDCTL_API=3 etcdctl \${ETCD_SSL_ARGS_V3} endpoint status --cluster -w table'
+
+#apiV2
+export ETCD_SSL_ARGS_V2="--endpoints=https://\${ETCD_HOST_FQDN}:2379 --ca-file=\${ETCD_SSL_DIR}/root.crt --cert-file=\${ETCD_SSL_DIR}/\${ETCD_USER}.crt --key-file=\${ETCD_SSL_DIR}/\${ETCD_USER}.key"
+alias etcdmembers='ETCDCTL_API=2 etcdctl \${ETCD_SSL_ARGS_V2} member list'
+alias etcdhealth='ETCDCTL_API=2 etcdctl \${ETCD_SSL_ARGS_V2} cluster-health'
+alias etcdls='ETCDCTL_API=2 etcdctl \${ETCD_SSL_ARGS_V2} ls /service/ --recursive'
+alias etcdgetv2key='ETCDCTL_API=2 etcdctl \${ETCD_SSL_ARGS_V2} get '
+
+#Move Etcd Leader
+alias etcdmove="ETCDCTL_API=3 etcdctl \${ETCD_SSL_ARGS_V3} --endpoints=https:\$(ETCDCTL_API=2 etcdctl \${ETCD_SSL_ARGS_V2} member list | grep -i 'isleader=true' | awk  -F'[: =]' '{print \$7}'):2379 move-leader"
 EOF
+```
