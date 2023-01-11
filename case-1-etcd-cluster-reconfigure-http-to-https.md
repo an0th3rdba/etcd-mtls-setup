@@ -217,7 +217,8 @@ cluster is healthy
 ```
 $ cat <<EOF >> ~/etcd.env
 export ETCD_HOST_FQDN="$(hostname -f)"
-export ETCD_USER="patroni_etcd_usr"
+export ETCD_USER="$(hostname -f)"
+#export ETCD_USER="patroni_etcd_usr"
 export ETCDCONF="/etc/etcd/etcd.conf"
 export ETCD_SSL_DIR="/home/postgres/ssl"
 
