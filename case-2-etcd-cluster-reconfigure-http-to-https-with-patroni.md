@@ -165,6 +165,7 @@ $ sudo cp -rp /home/postgres/ssl /tmp/ && sudo chown -R $(whoami):$(whoami) /tmp
 Run on each server:
 ```
 $ export ETCD_CERTS_SOURCE_SERVER="srv-pg-db01.ru-central1.internal"
+$ sudo mv /home/postgres/ssl /home/postgres/ssl___BKP_$(hostname -f)_$(date +%Y%m%d)T$(date +%H%M%S)
 $ scp -rp $(whoami)@${ETCD_CERTS_SOURCE_SERVER}:/tmp/ssl /tmp && sudo cp -rp /tmp/ssl /home/postgres/ && sudo chown -R postgres:postgres /home/postgres/ssl && sudo rm -rf /tmp/ssl
 $ scp -rp $(whoami)@${ETCD_CERTS_SOURCE_SERVER}:/tmp/ssl /tmp && sudo cp -rp /tmp/ssl /etc/etcd/ && sudo chown -R etcd:etcd /etc/etcd/ssl && sudo chmod 750 /etc/etcd && sudo rm -rf /tmp/ssl
 ```
